@@ -364,31 +364,20 @@ export function readPack(pack: Buffer, resolveBase?: (oid: string) => GitObject 
 
 /**
  * Inflate a zlib stream, reporting how many input bytes it consumed.
- * Node's inflateSync ignores trailing bytes and throws "unexpected end of file" when
- * truncated, so "inflates cleanly" is monotonic in the prefix length: binary-search the
- * smallest prefix that inflates, which is exactly the stream's end.
+ * Node's inflateSync with { info: true } reports the consumed input bytes
+ * (engine.bytesWritten) in a single call — no binary search, no thrown errors
+ * on truncated prefixes. (The suite's own pack reader does exactly this.)
  */
 function inflateWithLength(buf: Buffer): { data: Buffer; consumed: number } {
-  let lo = 1;
-  let hi = buf.length;
-  // Binary search on success: inflateSync throws "unexpected end of file" when truncated
-  // and succeeds (ignoring trailing bytes) once the prefix covers the whole stream.
-  let found = -1;
-  while (lo <= hi) {
-    const mid = (lo + hi) >> 1;
-    try {
-      inflateSync(buf.subarray(0, mid));
-      found = mid;
-      hi = mid - 1;
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : '';
-      if (/unexpected end|incomplete|buffer/i.test(msg)) lo = mid + 1;
-      else if (/incorrect|invalid|unknown|header|distance|check/i.test(msg)) throw err;
-      else lo = mid + 1;
-    }
+  let result: { buffer: Buffer; engine: { bytesWritten: number } };
+  try {
+    result = inflateSync(buf, { info: true }) as unknown as { buffer: Buffer; engine: { bytesWritten: number } };
+  } catch (err) {
+    throw new Error(`could not inflate pack object: ${err instanceof Error ? err.message : String(err)}`);
   }
-  if (found < 0) throw new Error('could not inflate pack object');
-  return { data: inflateSync(buf.subarray(0, found)), consumed: found };
+  const consumed = result.engine.bytesWritten;
+  if (!consumed || consumed <= 0) throw new Error('could not inflate pack object');
+  return { data: result.buffer, consumed };
 }
 
 /** Write a packfile (version 2, plain objects, no deltas) with a valid trailer. */

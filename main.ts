@@ -29,6 +29,10 @@
 
 import { createApp } from './app.ts';
 
+// Stack traces are never served to any client (errors carry only a message),
+// and capturing one per thrown error is pure cost on the hot path. Disable them.
+Error.stackTraceLimit = 0;
+
 /** One HTTP round-trip may take this long before it is dropped and retried. */
 const CALL_TIMEOUT_MS = 30_000;
 /** First pause between failed rounds, and the longest pause allowed. */

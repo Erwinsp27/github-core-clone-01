@@ -103,22 +103,28 @@ export function viewerLogin(): string {
   return VIEWER_LOGIN;
 }
 
-/** The path of a request URL, or '/' when it does not parse. */
-export function pathOf(req: IncomingMessage): string {
-  try {
-    return new URL(req.url ?? '/', 'http://entry').pathname;
-  } catch {
-    return '/';
+/** The path of a request URL, or '/' when it does not parse. Parse each request's URL once and reuse it: pathOf/queryOf are called several times per request (routing + handler), and `new URL` is not free. The request object is the cache key, so nothing can leak across requests. */
+const urlCache = new WeakMap<IncomingMessage, URL>();
+function requestUrl(req: IncomingMessage): URL {
+  let url = urlCache.get(req);
+  if (url === undefined) {
+    try {
+      url = new URL(req.url ?? '/', 'http://entry');
+    } catch {
+      url = new URL('/', 'http://entry');
+    }
+    urlCache.set(req, url);
   }
+  return url;
+}
+
+export function pathOf(req: IncomingMessage): string {
+  return requestUrl(req).pathname;
 }
 
 /** The query parameters of a request URL. */
 export function queryOf(req: IncomingMessage): URLSearchParams {
-  try {
-    return new URL(req.url ?? '/', 'http://entry').searchParams;
-  } catch {
-    return new URLSearchParams();
-  }
+  return requestUrl(req).searchParams;
 }
 
 /** Split a path into its '/'-separated segments (no empty segments). */

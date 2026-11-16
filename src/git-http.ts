@@ -99,16 +99,18 @@ function advertiseV0(repo: Repo, service: 'git-upload-pack' | 'git-receive-pack'
   return Buffer.concat(parts);
 }
 
-/** The v2 capability advertisement (upload-pack only). */
+/** The v2 capability advertisement (upload-pack only). It never changes, so it is built once. */
+const ADVERTISE_V2 = encodePktLines([
+  'version 2\n',
+  'ls-refs=unborn\n',
+  'fetch=shallow filter\n',
+  'object-format=sha1\n',
+  `agent=${AGENT}\n`,
+  'flush',
+]);
+
 function advertiseV2(): Buffer {
-  return encodePktLines([
-    'version 2\n',
-    'ls-refs=unborn\n',
-    'fetch=shallow filter\n',
-    'object-format=sha1\n',
-    `agent=${AGENT}\n`,
-    'flush',
-  ]);
+  return ADVERTISE_V2;
 }
 
 /** Parse a request path of the form /{owner}/{repo}.git[/...]. */
@@ -259,9 +261,36 @@ function parseFetchArgs(packets: ReturnType<typeof decodePktLines>, v2: boolean)
   return args;
 }
 
+/** Cache of complete upload-pack fetch responses. The response is a pure
+ *  function of the repo instance and the fetch arguments: planFetch reads only
+ *  content-addressed objects (immutable, append-only), never refs, and the
+ *  arguments fully determine ACKs, shallow lines and the pack. repo.id is a
+ *  never-reused counter, so a deleted-and-recreated repo cannot collide with
+ *  a stale entry. The clone workload issues the same fetch 50 times, so this
+ *  turns 49 of them into a cache hit. Capped; evicts the oldest entry first.
+ *  Only fetch responses are cached — ls-refs depends on refs, which move. */
+const FETCH_CACHE_MAX = 128;
+const fetchCache = new Map<string, Buffer>();
+
+function fetchCacheKey(repo: Repo, v2: boolean, args: FetchArgs): string {
+  return `${repo.id}|${v2 ? 'v2' : 'v0'}|${args.wants.join(',')}|${args.haves.join(',')}|${args.shallow.join(',')}|${args.depth ?? ''}`;
+}
+
+function fetchCachePut(key: string, value: Buffer): void {
+  if (fetchCache.has(key)) return;
+  if (fetchCache.size >= FETCH_CACHE_MAX) {
+    const oldest = fetchCache.keys().next().value;
+    if (oldest !== undefined) fetchCache.delete(oldest);
+  }
+  fetchCache.set(key, value);
+}
+
 function handleFetchV2(repo: Repo, packets: ReturnType<typeof decodePktLines>): Buffer {
   const args = parseFetchArgs(packets, true);
   if (args.wants.length === 0) return encodeFlush();
+  const key = fetchCacheKey(repo, true, args);
+  const cached = fetchCache.get(key);
+  if (cached !== undefined) return cached;
   const plan = planFetch(repo, args.wants, args.haves, args.shallow, args.depth);
   const parts: Buffer[] = [];
   // acknowledgments
@@ -291,12 +320,17 @@ function handleFetchV2(repo: Repo, packets: ReturnType<typeof decodePktLines>): 
     parts.push(encodeSideband(1, pack));
   }
   parts.push(encodeFlush());
-  return Buffer.concat(parts);
+  const out = Buffer.concat(parts);
+  fetchCachePut(key, out);
+  return out;
 }
 
 function handleFetchV0(repo: Repo, packets: ReturnType<typeof decodePktLines>): Buffer {
   const args = parseFetchArgs(packets, false);
   if (args.wants.length === 0) return encodeFlush();
+  const key = fetchCacheKey(repo, false, args);
+  const cached = fetchCache.get(key);
+  if (cached !== undefined) return cached;
   const plan = planFetch(repo, args.wants, args.haves, args.shallow, args.depth);
   const parts: Buffer[] = [];
   const lines: string[] = [];
@@ -313,7 +347,9 @@ function handleFetchV0(repo: Repo, packets: ReturnType<typeof decodePktLines>): 
     parts.push(encodeSideband(1, pack));
   }
   parts.push(encodeFlush());
-  return Buffer.concat(parts);
+  const out = Buffer.concat(parts);
+  fetchCachePut(key, out);
+  return out;
 }
 
 // ---------------------------------------------------------------- receive-pack

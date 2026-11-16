@@ -22,20 +22,29 @@ export const FORGE_VERSION = '1.0.0';
 const FIXED_ISO = '2025-01-01T00:00:00Z';
 const FIXED_EPOCH = 1735689600;
 
-/** The trial's fixed now: MAKEFUN_TRIAL_NOW (RFC 3339 or epoch ms) or the fixed instant. */
+/** The trial's fixed now: MAKEFUN_TRIAL_NOW (RFC 3339 or epoch ms) or the fixed instant. Memoized: the variable is fixed for the process's whole life, and this is called on every issue, commit and merge. */
+let cachedNow: { iso: string; epoch: number } | null = null;
 export function trialNow(): { iso: string; epoch: number } {
+  if (cachedNow !== null) return cachedNow;
   const raw = (process.env.MAKEFUN_TRIAL_NOW ?? '').trim();
   if (raw !== '') {
     const asNumber = Number(raw);
     if (Number.isFinite(asNumber) && asNumber > 0) {
       const date = new Date(asNumber);
-      if (!Number.isNaN(date.getTime())) return { iso: date.toISOString().replace(/\.\d{3}Z$/, 'Z'), epoch: Math.floor(asNumber / 1000) };
+      if (!Number.isNaN(date.getTime())) {
+        cachedNow = { iso: date.toISOString().replace(/\.\d{3}Z$/, 'Z'), epoch: Math.floor(asNumber / 1000) };
+        return cachedNow;
+      }
     } else {
       const date = new Date(raw);
-      if (!Number.isNaN(date.getTime())) return { iso: date.toISOString().replace(/\.\d{3}Z$/, 'Z'), epoch: Math.floor(date.getTime() / 1000) };
+      if (!Number.isNaN(date.getTime())) {
+        cachedNow = { iso: date.toISOString().replace(/\.\d{3}Z$/, 'Z'), epoch: Math.floor(date.getTime() / 1000) };
+        return cachedNow;
+      }
     }
   }
-  return { iso: FIXED_ISO, epoch: FIXED_EPOCH };
+  cachedNow = { iso: FIXED_ISO, epoch: FIXED_EPOCH };
+  return cachedNow;
 }
 
 export function nowIso(): string {
