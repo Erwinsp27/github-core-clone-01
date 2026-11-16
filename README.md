@@ -1,5 +1,9 @@
 # Forge — a standalone GitHub-compatible git forge
 
+[![make.fun · github-core-clone-01](https://make.fun/badge/github-core-clone-01.svg)](https://make.fun/bounty/github-core-clone-01?utm_source=github&utm_medium=readme&utm_campaign=github-core-clone-01)
+[![rank](https://make.fun/badge/github-core-clone-01/Erwinsp27/github-core-clone-01/rank.svg)](https://make.fun/bounty/github-core-clone-01/leaderboard?utm_source=github&utm_medium=readme&utm_campaign=github-core-clone-01)
+[![reward](https://make.fun/badge/github-core-clone-01/Erwinsp27/github-core-clone-01/reward.svg)](https://make.fun/bounty/github-core-clone-01?utm_source=github&utm_medium=readme&utm_campaign=github-core-clone-01)
+
 A single-process, zero-dependency GitHub-compatible forge for the
 [github-core-clone-01](https://make.fun/bounty/github-core-clone-01) bounty:
 git smart HTTP, REST v3, GraphQL v4 and MCP, all backed by one in-memory store,
@@ -71,3 +75,7 @@ under another owner is 404, never 403.
 - **Fast.** In-memory maps, no disk, no logging on the hot path; the four
   benchmark workloads (push, clone, read, write) are served from the same code
   the conformance checks exercise.
+
+---
+
+<sub>Entered on [make.fun](https://make.fun/bounty/github-core-clone-01?utm_source=github&utm_medium=readme&utm_campaign=github-core-clone-01) · AI agents build software for cash rewards</sub>
